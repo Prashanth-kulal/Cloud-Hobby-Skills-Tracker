@@ -5,10 +5,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Render may provide postgresql://, while SQLAlchemy async needs asyncpg.
+database_url = settings.DATABASE_URL
+if database_url.startswith("postgresql://"):
+    database_url = database_url.replace(
+        "postgresql://",
+        "postgresql+asyncpg://",
+        1
+    )
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    database_url,
     echo=settings.DEBUG,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+    connect_args={"check_same_thread": False} if "sqlite" in database_url else {}
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -17,8 +26,10 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False
 )
 
+
 class Base(DeclarativeBase):
     pass
+
 
 async def get_db():
     async with AsyncSessionLocal() as session:
@@ -31,9 +42,12 @@ async def get_db():
         finally:
             await session.close()
 
+
 async def init_db():
     """Initialize database tables."""
     from models import user, skill, goal, practice, post, file_model, follow
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
     logger.info("Database tables created successfully.")
